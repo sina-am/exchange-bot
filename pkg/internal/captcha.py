@@ -17,7 +17,7 @@ from yarl import URL
 
 class CaptchaML:
     def __init__(self) -> None:
-        self.clf = MLPClassifier(random_state=0, max_iter=500)
+        self.clf = MLPClassifier(random_state=0, max_iter=5000)
 
     def train_model(self, training_dir: Union[Path, str]):
         """ 
