@@ -191,7 +191,7 @@ class SqliteStorage(AbstractStorage):
             row = conn.execute(
                 sqlalchemy.text(query), [{'username': username}]).fetchone()
             if not row:
-                raise ValueError("user not found")
+                raise RecordNotFoundError("user not found")
 
             return Account(
                 id=uuid.UUID(bytes=row[0]),
