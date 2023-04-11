@@ -6,7 +6,7 @@ import typer
 
 from pkg.config import get_config
 from pkg.internal.brokers import TavanaBroker
-from pkg.internal.captcha import CaptchaML
+from pkg.internal.captcha import CaptchaSolver
 from pkg.models import BrokerName
 from pkg.server import WebServer
 from pkg.service import Service
@@ -20,7 +20,7 @@ def login(broker: str, username: str, password: str):
     assert broker in get_args(BrokerName)
     config = get_config()
 
-    ml = CaptchaML()
+    ml = CaptchaSolver()
     ml.load(config.captcha.model)
 
     service = Service(
@@ -42,7 +42,7 @@ def login(broker: str, username: str, password: str):
 def account_balance(username: str):
     config = get_config()
 
-    ml = CaptchaML()
+    ml = CaptchaSolver()
     ml.load(config.captcha.model)
 
     service = Service(
@@ -90,9 +90,7 @@ def captcha_train(training_dir: Optional[str] = None, model: Optional[str] = Non
     if not model:
         model = config.captcha.model
 
-    ml = CaptchaML()
-
-    print("training captcha model")
+    ml = CaptchaSolver()
     ml.train_model(training_dir)
     ml.save(model)
 
@@ -108,7 +106,7 @@ def serve():
         level=config.logging.level
     )
 
-    ml = CaptchaML()
+    ml = CaptchaSolver()
     ml.load(config.captcha.model)
 
     server = WebServer(

@@ -9,14 +9,14 @@ from yarl import URL
 
 from pkg.internal.brokers.abc import AbstractBroker
 from pkg.internal.brokers.exceptions import AuthenticationError
-from pkg.internal.captcha import CaptchaML
+from pkg.internal.captcha import CaptchaSolver
 from pkg.internal.requests import ScheduledRequest
 
 logger = logging.getLogger('myapp')
 
 
 class TavanaBroker(AbstractBroker):
-    def __init__(self, captcha_ml: CaptchaML):
+    def __init__(self, captcha_ml: CaptchaSolver):
         self.base_url = URL('https://onlinetavana.ir/')
         self.base_api_url = URL('https://api.onlinetavana.ir/Web/V1/')
         self.captcha_url = self.base_url / 'Account/undefined/4051238/Account/Captcha'
@@ -44,8 +44,8 @@ class TavanaBroker(AbstractBroker):
                     async for chunk in res.content.iter_chunked(1024):
                         fd.write(chunk)
 
-        return int(input('Enter captcha'))
-        return int(self.captcha_detector.predict_captcha(img))
+        with open('./captcha.jpeg', 'rb') as fd:
+            return int(self.captcha_detector.predict(fd))
 
     async def login(self, username: str, password: str, user_agent: str) -> Tuple[Dict[str, str], aiohttp.CookieJar]:
         url = self.base_url / 'login'

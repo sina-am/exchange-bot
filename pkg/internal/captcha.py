@@ -1,88 +1,61 @@
 import asyncio
 import os
-import pickle
-import tempfile
 import uuid
-from io import BytesIO
+import io
 from pathlib import Path
 from typing import Union
 
 import aiohttp
 import cv2
 import numpy as np
-from sklearn.neural_network import MLPClassifier
-from sklearn.preprocessing import LabelEncoder
 from yarl import URL
+from keras import layers
+from keras.models import Model
+from dataclasses import dataclass
 
 
-class CaptchaML:
-    def __init__(self) -> None:
-        self.clf = MLPClassifier(random_state=0, max_iter=5000)
+@dataclass
+class DatasetConfig:
+    shape = (60, 202, 1)
+    labels = "1234567890"
+    length: int = 4
+    n_sample: int = 500
 
-    def train_model(self, training_dir: Union[Path, str]):
+
+class CaptchaSolver:
+    def __init__(self, dataset_config: DatasetConfig = DatasetConfig()) -> None:
+        self.dataset_config = dataset_config
+        self.model = self.__create_model()
+
+    def train_model(self, training_dir: str):
         """ 
         After labeling files in download directory, use this function to build training model
         """
+        X, y = self.__preprocess(training_dir)
+        return self.model.fit(X, [y[0], y[1], y[2], y[3]], batch_size=32, epochs=60, validation_split=0.2)
 
-        tmp_dir = tempfile.mkdtemp()
-
-        files = os.listdir(training_dir)
-        for file_name in files:
-            img = cv2.imread(
-                os.path.join(training_dir, file_name),
-                cv2.IMREAD_GRAYSCALE
-            )
-            img = self.__prepare_image(img)
-
-            cv2.imwrite(
-                os.path.join(tmp_dir, f'{file_name.split(".")[0]}.jpeg'), img)
-
-        le = LabelEncoder()
-        values = list(range(0, 10))
-        le.fit(values)
-
-        files = os.listdir(tmp_dir)
-        X = []
-        y = []
-        for file_name in files:
-            number = file_name.split('.')[0]
-            img = cv2.imread(
-                os.path.join(tmp_dir, file_name), cv2.IMREAD_UNCHANGED)
-
-            for i in range(4):
-                X.append(
-                    img[:, i*(202//4): (i+1)*(202//4)].reshape([3000]).astype('bool'))
-                y.append(int(number[i]))
-
-        X = np.array(X)
-        y = le.transform(y)
-
-        self.clf.fit(X, y)
-
-    def predict_captcha(self, reader: BytesIO) -> str:
+    def predict(self, reader: io.BufferedReader) -> str:
         bytes_as_np_array = np.frombuffer(reader.read(), dtype=np.uint8)
         img = cv2.imdecode(bytes_as_np_array, cv2.IMREAD_GRAYSCALE)
-        # For debug only
-        cv2.imwrite('./captcha.jpeg', img)
-        img = self.__prepare_image(img)
+        img = img / 255.0
 
-        captcha = ""
-        for i in range(4):
-            digit = self.clf.predict(
-                img[:, i*(202//4): (i+1)*(202//4)].reshape([3000]).astype('bool').reshape(1, -1))
-            if digit:
-                captcha += str(digit[0])
+        res = np.array(self.model.predict(img[np.newaxis, :, :, np.newaxis]))
 
-        print('guest was', captcha)
-        return captcha
+        result = np.reshape(res, (self.dataset_config.length, len(self.dataset_config.labels)))
+        k_ind = []
+        for i in result:
+            k_ind.append(np.argmax(i))
 
-    def save(self, model_file: str):
-        with open(model_file, 'wb') as fd:
-            pickle.dump(self.clf, fd)
+        capt = ''
+        for k in k_ind:
+            capt += self.dataset_config.labels[k]
+        return capt
 
-    def load(self, model_file: str):
-        with open(model_file, 'rb') as fd:
-            self.clf = pickle.load(fd)
+    def save(self, filepath: str):
+        self.model.save_weights(filepath)
+
+    def load(self, filepath: str):
+        self.model.load_weights(filepath)
 
     async def __fetch(self, session, directory: Path, url: URL):
         async with session.get(url) as response:
@@ -99,19 +72,55 @@ class CaptchaML:
             tasks = asyncio.gather(*functions)
             await tasks
 
-    def __prepare_image(self, img):
-        """ Convert image to specific format. """
+    def __create_model(self):
+        img = layers.Input(shape=self.dataset_config.shape)
+        conv1 = layers.Conv2D(16, (3, 3), padding='same', activation='relu')(img)  # 50*200
+        mp1 = layers.MaxPooling2D(padding='same')(conv1)  # 25*100
+        conv2 = layers.Conv2D(32, (3, 3), padding='same', activation='relu')(mp1)
+        mp2 = layers.MaxPooling2D(padding='same')(conv2)  # 13*50
+        conv3 = layers.Conv2D(32, (3, 3), padding='same', activation='relu')(mp2)
+        bn = layers.BatchNormalization()(conv3)  # to improve the stability of model
+        mp3 = layers.MaxPooling2D(padding='same')(bn)  # 7*25
 
-        # Remove noise
-        img = cv2.fastNlMeansDenoising(
-            img, None, 20, 7, 21)  # type: ignore
+        flat = layers.Flatten()(mp3)  # convert the layer into 1-D
 
-        # Convert to binary
-        (thresh, img) = cv2.threshold(
-            img,
-            180,
-            255,
-            cv2.THRESH_BINARY | cv2.THRESH_OTSU
-        )
+        outs = []
+        for _ in range(self.dataset_config.length):
+            dens1 = layers.Dense(64, activation='relu')(flat)
+            drop = layers.Dropout(0.5)(dens1)  # drops 0.5 fraction of nodes
+            res = layers.Dense(len(self.dataset_config.labels), activation='sigmoid')(drop)
 
-        return img
+            outs.append(res)
+
+        model = Model(img, outs)
+        model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=["accuracy"])
+        return model
+
+    def __preprocess(self, training_dir: str):
+        n_sample = len(os.listdir(training_dir))
+        X = np.zeros((n_sample, *self.dataset_config.shape))
+        y = np.zeros((self.dataset_config.length, n_sample, len(self.dataset_config.labels)))
+
+        for i, filename in enumerate(os.listdir(training_dir)):
+            img = cv2.imread(
+                os.path.join(training_dir, filename),
+                cv2.IMREAD_GRAYSCALE
+            ) / 255  # type: ignore
+
+            label = filename.split('.')[0]
+            # There might be more than one sample with the same number
+            if label.endswith('_'):
+                label = label.replace('_', '')
+
+            img = np.reshape(img, self.dataset_config.shape)  # reshapes image to width 200 , height 50 ,channel 1
+            target = np.zeros((self.dataset_config.length, len(self.dataset_config.labels))
+                              )  # creates an array of size 5*36 with all entries 0
+
+            for j, k in enumerate(label):
+                index = self.dataset_config.labels.find(k)
+                target[j, index] = 1
+
+            X[i] = img
+            y[:, i] = target
+
+        return X, y
