@@ -6,6 +6,11 @@ import aiohttp
 
 
 class AbstractBroker(abc.ABC):
+    name: str 
+    min_latency: float = 0
+    max_latency: float = 0
+    avg_latency: float = 0
+
     @abc.abstractmethod
     async def login(
             self,

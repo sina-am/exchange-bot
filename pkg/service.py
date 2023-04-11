@@ -19,6 +19,7 @@ class Service:
         self.brokers = brokers
 
     def get_broker(self, name: BrokerName) -> AbstractBroker:
+        self.storage
         broker = self.brokers.get(name)
         if not broker:
             raise KeyError('invalid broker name')
@@ -85,7 +86,7 @@ class Service:
             status='SCHEDULED',
         )
 
-        # self.storage.add_order(order)
+        self.storage.add_order(order)
 
         asyncio.create_task(
             self.__schedule_order_worker(broker, account, order, deadline))
@@ -100,12 +101,12 @@ class Service:
     ):
 
         status, data = await broker.schedule_order(
-            account.cookies,
-            account.headers,
-            deadline,
-            order.isin,
-            order.price,
-            order.count
+            cookies=account.cookies,
+            headers=account.headers,
+            deadline=deadline,
+            isin=order.isin,
+            price=order.price,
+            count=order.count,
         )
         logger.info(f"broker sends {status}, {data}")
         if status == 200:

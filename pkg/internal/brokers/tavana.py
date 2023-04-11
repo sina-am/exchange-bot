@@ -1,8 +1,10 @@
+import asyncio
 import datetime
 import json
 import logging
-from typing import Dict, Tuple, Union
+from typing import Dict, List, Tuple, Union
 from urllib.parse import urlencode
+import time
 
 import aiohttp
 from yarl import URL
@@ -10,13 +12,15 @@ from yarl import URL
 from pkg.internal.brokers.abc import AbstractBroker
 from pkg.internal.brokers.exceptions import AuthenticationError
 from pkg.internal.captcha import CaptchaML
-from pkg.internal.requests import ScheduledRequest
+from pkg.internal.requests import Request, schedule_request, calc_latency
 
 logger = logging.getLogger('myapp')
 
 
 class TavanaBroker(AbstractBroker):
     def __init__(self, captcha_ml: CaptchaML):
+        self.name = "TAVANA"
+
         self.base_url = URL('https://onlinetavana.ir/')
         self.base_api_url = URL('https://api.onlinetavana.ir/Web/V1/')
         self.captcha_url = self.base_url / 'Account/undefined/4051238/Account/Captcha'
@@ -44,7 +48,7 @@ class TavanaBroker(AbstractBroker):
                     async for chunk in res.content.iter_chunked(1024):
                         fd.write(chunk)
 
-        return int(input('Enter captcha'))
+        return int(input('Enter captcha: '))
         return int(self.captcha_detector.predict_captcha(img))
 
     async def login(self, username: str, password: str, user_agent: str) -> Tuple[Dict[str, str], aiohttp.CookieJar]:
@@ -104,6 +108,14 @@ class TavanaBroker(AbstractBroker):
     def convert_to_int(self, str_number: str):
         return int(str_number.replace(',', ''))
 
+    def update_latencies(self, new_latency: float):
+        if new_latency > self.max_latency:
+            self.max_latency = new_latency
+        elif new_latency < self.min_latency:
+            self.min_latency = new_latency
+
+        self.avg_latency = (self.avg_latency + new_latency) / 2
+
     async def schedule_order(
         self,
         cookies: aiohttp.CookieJar,
@@ -140,11 +152,17 @@ class TavanaBroker(AbstractBroker):
             'shortSellIsEnabled': False,
         }
 
-        req = ScheduledRequest(
+        request = Request(
+            method='post',
             url=url,
-            method='POST',
-            data=json.dumps(order_req).encode(),
             headers=headers,
-            deadline=deadline,
+            data=json.dumps(order_req).encode()
         )
-        return await req.run()
+        
+        # While it's 3 minutes before deadline
+        while datetime.datetime.now() + datetime.timedelta(minutes=5) < deadline:
+            latency = await calc_latency('get', self.base_api_url)
+            self.update_latencies(latency)
+            await asyncio.sleep(1)
+
+        return await schedule_request(request, deadline, self.min_latency)

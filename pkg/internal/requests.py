@@ -1,78 +1,110 @@
+from aiohttp.connector import Connection
+from contextlib import asynccontextmanager
+import abc
 import asyncio
 import datetime
 import logging
 import time
-from typing import Dict, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from aiohttp import ClientRequest, ClientTimeout, TCPConnector
 from yarl import URL
 
 logger = logging.getLogger('myapp')
-logger.setLevel(logging.DEBUG)
 
 
-class ScheduledRequest:
+class AbstractRequest(abc.ABC):
+    @abc.abstractmethod
+    async def make_connection(self):
+        raise NotImplementedError
+
+
+class Request(AbstractRequest):
     def __init__(
             self,
             method: str,
             url: Union[URL, str],
-            deadline: datetime.datetime,
             headers: Optional[Dict[str, str]] = None,
             data: Optional[bytes] = None,
-            timeout: int = 10,
-    ):
+    ) -> None:
+
         if isinstance(url, str):
             url = URL(url)
-        self.deadline = deadline
-        self.req = ClientRequest(
+        self.request = ClientRequest(
             method=method,
             url=url,
             headers=headers,
             data=data,
         )
 
-        self.timeout = timeout
+    @asynccontextmanager
+    async def make_connection(self):
+        async with TCPConnector() as connector:
+            conn = await connector.connect(self.request, [], ClientTimeout(total=30))
+            conn.protocol.set_response_params(  # type: ignore
+                read_until_eof=True,
+                auto_decompress=True,
+                read_timeout=10,
+                read_bufsize=1024,
+            )
+            yield conn
 
-    async def run(self):
-        self.connector = TCPConnector(
-            force_close=True,
-            limit=1,
-            verify_ssl=True,
-            ssl=True
-        )
-        # Calculate time to sleep (on_time - timeout/2)
-        # Wait till it's time to make the tcp connection (timeout/2 second before deadline)
-        logger.info(f"request scheduled for deadline: {self.deadline}")
-        sleep_time = (
-            self.deadline - datetime.timedelta(seconds=self.timeout/2)) - datetime.datetime.now()
-        await asyncio.sleep(sleep_time.total_seconds())
+    @asynccontextmanager
+    async def send(self, conn: Connection):
+        async with await self.request.send(conn) as response:
+            await response.start(conn)
+            yield response
 
-        logger.info("making tcp connection")
-        conn = await self.connector.connect(self.req, [], ClientTimeout())
+
+async def calc_latency(method: str, url: Union[URL, str]) -> float:
+    """ Calculate latency for a specific url. """
+    request = Request(method=method, url=url)
+    async with request.make_connection() as conn:
+        t1 = time.time()
+        async with request.send(conn) as _:
+            t2 = time.time()
+        return t2 - t1
+
+
+
+async def schedule_request(request: Request, deadline: datetime.datetime, latency: float) -> Tuple[int, Any]:
+    """ Schedule request for the deadline 
+    latency: send request at deadline - latency time
+    """
+
+    logger.info(f"request scheduled for deadline: {deadline}")
+    await _go_to_deep_sleep(deadline)
+
+    logger.info("making tcp connection")
+    async with request.make_connection() as conn:
         logger.info("connection is ready. waiting for deadline")
-
-        conn.protocol.set_response_params(
-            read_until_eof=True,
-            auto_decompress=True,
-            read_timeout=10,
-            read_bufsize=1024,
-        )
-        sleep_time2 = self.deadline - datetime.datetime.now()
-        await asyncio.sleep(sleep_time2.total_seconds() - 1)
-        i = 0
-        while datetime.datetime.now() < self.deadline:
-            i += 1
+        time_to_send = deadline - datetime.timedelta(seconds=latency)
+        logger.info(f"request will send at {time_to_send}")
+        await _go_to_shallow_sleep(time_to_send)
 
         logger.info(f"request sended at {datetime.datetime.now()}")
         t1 = time.time_ns()
-        resp = await self.req.send(conn)
-        t2 = time.time_ns()
-        logger.info(
-            f"latency using {self.__class__.__name__}: {t2 - t1}ns")
+        async with request.send(conn) as response:
+            t2 = time.time_ns()
+            logger.info(
+                f"latency: {t2 - t1}ns")
+            return response.status, await response.json()
 
-        await resp.start(conn)
-        data = resp.status, await resp.text()
-        resp.close()
-        await self.req.close()
-        conn.close()
-        return data
+
+async def _go_to_deep_sleep(deadline: datetime.datetime):
+    """ Will awake 5 second before deadline """
+    sleep_time = (
+        deadline - datetime.timedelta(seconds=5)) - datetime.datetime.now()
+    await asyncio.sleep(sleep_time.total_seconds())
+
+
+async def _go_to_shallow_sleep(deadline: datetime.datetime):
+    """ Will awake at deadline """
+    sleep_time = (deadline - datetime.datetime.now()).total_seconds()
+    if sleep_time > 1:
+        await asyncio.sleep(sleep_time - 1)
+
+    counter = 0
+    while datetime.datetime.now() < deadline:
+        counter += 1
+

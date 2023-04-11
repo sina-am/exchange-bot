@@ -17,7 +17,6 @@ srv_cli = typer.Typer()
 
 @srv_cli.command('login')
 def login(broker: str, username: str, password: str):
-    assert broker in get_args(BrokerName)
     config = get_config()
 
     ml = CaptchaML()
@@ -32,7 +31,7 @@ def login(broker: str, username: str, password: str):
 
     try:
         account = asyncio.run(
-            service.login(broker, username, password))  # type: ignore
+            service.login("TAVANA", username, password))  # type: ignore
         print('account id:', account.id)
     except Exception as exc:
         print(exc)

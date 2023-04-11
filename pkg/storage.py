@@ -40,6 +40,18 @@ class AbstractStorage(abc.ABC):
     def get_account_by_username(self, username: str) -> Account:
         raise NotImplementedError
 
+    @abc.abstractmethod
+    def get_broker_latency(self, broker_name: str) -> float:
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def update_broker_latencies(self, broker_name: str, min_latency: float, max_latency: float, avg_latency: float):
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def add_broker(self, broker_name: str):
+        raise NotImplementedError
+
 
 class SqliteStorage(AbstractStorage):
     def __init__(self, url) -> None:
@@ -68,6 +80,15 @@ class SqliteStorage(AbstractStorage):
             sqlalchemy.Column("status", sqlalchemy.String(30)),
         )
 
+        self.broker_schema = sqlalchemy.Table(
+            "brokers",
+            self.metadata_obj,
+            sqlalchemy.Column("name", sqlalchemy.String(30)),
+            sqlalchemy.Column("min_latency", sqlalchemy.Float()),
+            sqlalchemy.Column("max_latency", sqlalchemy.Float()),
+            sqlalchemy.Column("avg_latency", sqlalchemy.Float()),
+        )
+
     def migrate(self):
         self.metadata_obj.create_all(self.engine)
 
@@ -78,6 +99,56 @@ class SqliteStorage(AbstractStorage):
         cookies = aiohttp.CookieJar()
         cookies._cookies = pickle.loads(data)
         return cookies
+
+    def get_broker_latency(self, broker_name: str) -> float:
+        query = '''
+            SELECT min_latency
+            FROM brokers
+            WHERE name=:name
+        '''
+
+        with self.engine.connect() as conn:
+            row = conn.execute(sqlalchemy.text(query), [{"name": broker_name}]).fetchone()
+            if not row:
+                raise RecordNotFoundError(f"broker with name {broker_name} not found")
+
+            return row[0]
+
+    def update_broker_latencies(self, broker_name: str, min_latency: float, max_latency: float, avg_latency: float):
+        query = '''
+            UPDATE brokers
+            SET 
+                min_latency=:min_latency,
+                max_latency=:max_latency,
+                avg_latency=:avg_latency
+            WHERE name=:name
+        '''
+
+        with self.engine.begin() as conn:
+            conn.execute(sqlalchemy.text(query), [{
+                "name": broker_name,
+                "min_latency": min_latency,
+                "max_latency": max_latency,
+                "avg_latency": avg_latency,
+            }])
+
+
+    def add_broker(self, broker_name: str):
+        query = '''
+            INSERT INTO 
+                broker(name, min_latency, max_latency, avg_latency) 
+            VALUES (
+                :name, :min_latency, :max_latency, :avg_latency
+            )
+        '''
+
+        with self.engine.begin() as conn:
+            conn.execute(sqlalchemy.text(query), [{
+                "name": broker_name,
+                "min_latency": 0,
+                "max_latency": 0,
+                "avg_latency": 0,
+            }])
 
     def add_order(self, order: Order):
         query = '''
