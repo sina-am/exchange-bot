@@ -17,6 +17,7 @@ logger = logging.getLogger('myapp')
 
 class TavanaBroker(AbstractBroker):
     def __init__(self, captcha_ml: CaptchaSolver):
+        self.name = "TAVANA"
         self.base_url = URL('https://onlinetavana.ir/')
         self.base_api_url = URL('https://api.onlinetavana.ir/Web/V1/')
         self.captcha_url = self.base_url / 'Account/undefined/4051238/Account/Captcha'

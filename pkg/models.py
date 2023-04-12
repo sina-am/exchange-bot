@@ -4,7 +4,8 @@ from typing import Dict, Literal
 
 import aiohttp
 
-BrokerName = Literal["TAVANA", "FAKE"]
+from pkg.internal.brokers.abc import BrokerName
+
 OrderStatus = Literal["SCHEDULED", "DONE"]
 
 

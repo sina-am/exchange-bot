@@ -1,12 +1,12 @@
-
 import asyncio
 import datetime
 import logging
 import uuid
 from typing import Dict
 
-from pkg.internal.brokers import AbstractBroker
-from pkg.models import Account, BrokerName, Order
+from pkg.internal.brokers import AbstractBroker, BrokerName
+from pkg.internal.brokers.exceptions import AuthenticationError
+from pkg.models import Account, Order
 from pkg.storage import AbstractStorage, RecordNotFoundError
 
 logger = logging.getLogger('myapp')
@@ -91,6 +91,19 @@ class Service:
             self.__schedule_order_worker(broker, account, order, deadline))
         logger.info(f"task scheduled for {deadline}")
 
+    async def __attempt_for_login(self, broker_name: BrokerName, username: str, password: str) -> Account:
+        """ Try to login the account. but since captcha solver might not work every time.
+        It'll attempt to login 3 times and if all fail then raise AuthenticationError
+        """
+
+        for n_attempts in range(3):
+            try:
+                return await self.login(broker_name, username, password)
+            except AuthenticationError:
+                logger.warning(f"{n_attempts} attempt for logging the {username} failed")
+                await asyncio.sleep(5)
+        raise AuthenticationError
+
     async def __schedule_order_worker(
         self,
         broker: AbstractBroker,
@@ -99,9 +112,10 @@ class Service:
         deadline: datetime.datetime
     ):
 
+        refresh_account = await self.__attempt_for_login(broker.name, account.username, account.password)
         status, data = await broker.schedule_order(
-            account.cookies,
-            account.headers,
+            refresh_account.cookies,
+            refresh_account.headers,
             deadline,
             order.isin,
             order.price,

@@ -1,11 +1,15 @@
 import abc
 import datetime
-from typing import Dict, Tuple
-
 import aiohttp
+from typing import Dict, Literal, Tuple
+
+
+BrokerName = Literal["TAVANA", "FAKE"]
 
 
 class AbstractBroker(abc.ABC):
+    name: BrokerName
+
     @abc.abstractmethod
     async def login(
             self,
