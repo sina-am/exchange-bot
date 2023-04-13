@@ -48,6 +48,18 @@ class TavanaBroker(AbstractBroker):
         with open('./captcha.jpeg', 'rb') as fd:
             return int(self.captcha_detector.predict(fd))
 
+    async def get_stock(self, stock_name: str) -> Dict[str, str]:
+        url = 'https://api.onlinetavana.ir/Web/V1/Symbol/GetSymbol?term=' + stock_name
+
+        headers = {
+            **self.base_headers,
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/95.0.4638.54 Safari/537.36 RuxitSynthetic/1.0 v8570808866573625578 t1940058695426470036 ath1fb31b7a altpriv cvcv=2 smf=0',
+        }
+
+        async with aiohttp.ClientSession(headers=headers) as session:
+            async with session.get(url) as response:
+                return await response.json()
+
     async def login(self, username: str, password: str, user_agent: str) -> Tuple[Dict[str, str], aiohttp.CookieJar]:
         url = self.base_url / 'login'
         cookies = aiohttp.CookieJar()

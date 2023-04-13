@@ -8,7 +8,7 @@ class ScheduledRequestTestCase(unittest.IsolatedAsyncioTestCase):
         self.req = ScheduledRequest(
             method='GET',
             url='https://www.google.com/',
-            deadline=datetime.datetime.now() + datetime.timedelta(seconds=3)
+            deadline=datetime.datetime.utcnow() + datetime.timedelta(seconds=3)
         )
 
     async def test_scheduled(self):

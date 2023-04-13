@@ -11,6 +11,10 @@ class AbstractBroker(abc.ABC):
     name: BrokerName
 
     @abc.abstractmethod
+    async def get_stock(self, stock_name: str) -> Dict[str, str]:
+        raise NotImplementedError
+
+    @abc.abstractmethod
     async def login(
             self,
             username: str,

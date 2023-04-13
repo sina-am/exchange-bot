@@ -9,8 +9,6 @@ import aiohttp
 import cv2
 import numpy as np
 from yarl import URL
-from keras import layers
-from keras.models import Model
 from dataclasses import dataclass
 
 
@@ -32,7 +30,7 @@ class CaptchaSolver:
         After labeling files in download directory, use this function to build training model
         """
         X, y = self.__preprocess(training_dir)
-        return self.model.fit(X, [y[0], y[1], y[2], y[3]], batch_size=32, epochs=60, validation_split=0.2)
+        return self.model.fit(X, [y[0], y[1], y[2], y[3]], batch_size=32, epochs=60, validation_split=0.2, verbose="0")
 
     def predict(self, reader: io.BufferedReader) -> str:
         bytes_as_np_array = np.frombuffer(reader.read(), dtype=np.uint8)
@@ -73,22 +71,25 @@ class CaptchaSolver:
             await tasks
 
     def __create_model(self):
-        img = layers.Input(shape=self.dataset_config.shape)
-        conv1 = layers.Conv2D(16, (3, 3), padding='same', activation='relu')(img)  # 50*200
-        mp1 = layers.MaxPooling2D(padding='same')(conv1)  # 25*100
-        conv2 = layers.Conv2D(32, (3, 3), padding='same', activation='relu')(mp1)
-        mp2 = layers.MaxPooling2D(padding='same')(conv2)  # 13*50
-        conv3 = layers.Conv2D(32, (3, 3), padding='same', activation='relu')(mp2)
-        bn = layers.BatchNormalization()(conv3)  # to improve the stability of model
-        mp3 = layers.MaxPooling2D(padding='same')(bn)  # 7*25
+        from keras.layers import Input, Conv2D, Dense, MaxPooling2D, BatchNormalization, Dropout, Flatten
+        from keras.models import Model
 
-        flat = layers.Flatten()(mp3)  # convert the layer into 1-D
+        img = Input(shape=self.dataset_config.shape)
+        conv1 = Conv2D(16, (3, 3), padding='same', activation='relu')(img)  # 50*200
+        mp1 = MaxPooling2D(padding='same')(conv1)  # 25*100
+        conv2 = Conv2D(32, (3, 3), padding='same', activation='relu')(mp1)
+        mp2 = MaxPooling2D(padding='same')(conv2)  # 13*50
+        conv3 = Conv2D(32, (3, 3), padding='same', activation='relu')(mp2)
+        bn = BatchNormalization()(conv3)  # to improve the stability of model
+        mp3 = MaxPooling2D(padding='same')(bn)  # 7*25
+
+        flat = Flatten()(mp3)  # convert the layer into 1-D
 
         outs = []
         for _ in range(self.dataset_config.length):
-            dens1 = layers.Dense(64, activation='relu')(flat)
-            drop = layers.Dropout(0.5)(dens1)  # drops 0.5 fraction of nodes
-            res = layers.Dense(len(self.dataset_config.labels), activation='sigmoid')(drop)
+            dens1 = Dense(64, activation='relu')(flat)
+            drop = Dropout(0.5)(dens1)  # drops 0.5 fraction of nodes
+            res = Dense(len(self.dataset_config.labels), activation='sigmoid')(drop)
 
             outs.append(res)
 

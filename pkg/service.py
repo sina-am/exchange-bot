@@ -2,7 +2,7 @@ import asyncio
 import datetime
 import logging
 import uuid
-from typing import Dict
+from typing import Dict, Iterable, List
 
 from pkg.internal.brokers import AbstractBroker, BrokerName
 from pkg.internal.brokers.exceptions import AuthenticationError
@@ -27,10 +27,17 @@ class Service:
     async def get_random_user_agent(self) -> str:
         return 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/111.0'
 
+    async def get_accounts(self) -> Iterable[Account]:
+        return self.storage.get_accounts()
+
     async def get_account_balance(self, username: str) -> int:
         account = self.storage.get_account_by_username(username)
         broker = self.get_broker(account.broker)
         return await broker.get_account_balance(account.headers, account.cookies)
+
+    async def get_stock(self, stock_name: str) -> Dict[str, str]:
+        broker = self.get_broker('TAVANA')
+        return await broker.get_stock(stock_name)
 
     async def login(self, broker_name: BrokerName, username: str, password: str) -> Account:
         """
@@ -46,13 +53,14 @@ class Service:
 
         try:
             account = self.storage.get_account_by_username(username)
-            self.storage.refresh_account(username, cookies, headers)
+            self.storage.refresh_account(username, datetime.datetime.utcnow(), cookies, headers)
         except RecordNotFoundError:
             account = Account(
                 id=uuid.uuid4(),
                 broker=broker_name,
                 username=username,
                 password=password,
+                last_login=datetime.datetime.utcnow(),
                 cookies=cookies,
                 headers=headers,
             )
@@ -111,11 +119,12 @@ class Service:
         order: Order,
         deadline: datetime.datetime
     ):
+        if (account.last_login + datetime.timedelta(minutes=15)) < datetime.datetime.utcnow():
+            account = await self.__attempt_for_login(broker.name, account.username, account.password)
 
-        refresh_account = await self.__attempt_for_login(broker.name, account.username, account.password)
         status, data = await broker.schedule_order(
-            refresh_account.cookies,
-            refresh_account.headers,
+            account.cookies,
+            account.headers,
             deadline,
             order.isin,
             order.price,

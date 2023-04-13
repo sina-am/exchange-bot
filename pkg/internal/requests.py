@@ -44,7 +44,7 @@ class ScheduledRequest:
         # Wait till it's time to make the tcp connection (timeout/2 second before deadline)
         logger.info(f"request scheduled for deadline: {self.deadline}")
         sleep_time = (
-            self.deadline - datetime.timedelta(seconds=self.timeout/2)) - datetime.datetime.now()
+            self.deadline - datetime.timedelta(seconds=self.timeout/2)) - datetime.datetime.utcnow()
         await asyncio.sleep(sleep_time.total_seconds())
 
         logger.info("making tcp connection")
@@ -57,13 +57,13 @@ class ScheduledRequest:
             read_timeout=10,
             read_bufsize=1024,
         )
-        sleep_time2 = self.deadline - datetime.datetime.now()
+        sleep_time2 = self.deadline - datetime.datetime.utcnow()
         await asyncio.sleep(sleep_time2.total_seconds() - 1)
         i = 0
-        while datetime.datetime.now() < self.deadline:
+        while datetime.datetime.utcnow() < self.deadline:
             i += 1
 
-        logger.info(f"request sended at {datetime.datetime.now()}")
+        logger.info(f"request sended at {datetime.datetime.utcnow()}")
         t1 = time.time_ns()
         resp = await self.req.send(conn)
         t2 = time.time_ns()

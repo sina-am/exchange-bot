@@ -1,5 +1,7 @@
+import os
 import asyncio
 import logging
+from aiohttp import web
 from typing import Optional, get_args
 
 import typer
@@ -8,11 +10,23 @@ from pkg.config import get_config
 from pkg.internal.brokers import TavanaBroker
 from pkg.internal.captcha import CaptchaSolver
 from pkg.models import BrokerName
-from pkg.server import WebServer
+from pkg.server.factory import create_server
 from pkg.service import Service
 from pkg.storage import SqliteStorage
 
 srv_cli = typer.Typer()
+captcha_cli = typer.Typer()
+cli = typer.Typer()
+cli.add_typer(
+    srv_cli,
+    name='service',
+    help='Interact with service layer directly'
+)
+cli.add_typer(
+    captcha_cli,
+    name='captcha',
+    help='Predict and train captcha model'
+)
 
 
 @srv_cli.command('login')
@@ -59,14 +73,6 @@ def account_balance(username: str):
         print(exc)
 
 
-cli = typer.Typer()
-cli.add_typer(
-    srv_cli,
-    name='service',
-    help='Interact with service layer directly'
-)
-
-
 @cli.command('migrate')
 def migrate(url: Optional[str] = None):
     """ Migrate database """
@@ -80,7 +86,7 @@ def migrate(url: Optional[str] = None):
     storage.migrate()
 
 
-@cli.command('captcha')
+@captcha_cli.command('train')
 def captcha_train(training_dir: Optional[str] = None, model: Optional[str] = None):
     """ Train captcha model """
 
@@ -95,10 +101,21 @@ def captcha_train(training_dir: Optional[str] = None, model: Optional[str] = Non
     ml.save(model)
 
 
+@captcha_cli.command('predict')
+def captcha_predict(filepath: str):
+    config = get_config()
+    ml = CaptchaSolver()
+    ml.load(config.captcha.model)
+    with open(filepath, 'rb') as fd:
+        print("Predicted:", ml.predict(fd))
+    ml.save(config.captcha.model)
+
+
 @cli.command('serve')
 def serve():
     """ Serve APIs """
-
+    os.environ['TF_CPP_MIN_VLOG_LEVEL'] = '0'
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '0'
     config = get_config()
 
     logging.basicConfig(
@@ -109,9 +126,7 @@ def serve():
     ml = CaptchaSolver()
     ml.load(config.captcha.model)
 
-    server = WebServer(
-        host=config.server.host,
-        port=config.server.port,
+    app = create_server(
         service=Service(
             storage=SqliteStorage(config.storage.url),
             brokers={
@@ -119,5 +134,12 @@ def serve():
             }
         )
     )
-
-    server.run()
+    logging.info(f"server is running on http://{config.server.host}:{config.server.port}")
+    web.run_app(
+        app,
+        host=config.server.host,
+        port=config.server.port,
+        print=lambda _: None,
+        reuse_address=True
+    )
+    logging.info(f"server is shutting down")
