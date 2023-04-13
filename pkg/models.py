@@ -1,10 +1,12 @@
 import uuid
 from dataclasses import dataclass
 from typing import Dict, Literal
+import datetime
 
 import aiohttp
 
-BrokerName = Literal["TAVANA", "FAKE"]
+from pkg.internal.brokers.abc import BrokerName
+
 OrderStatus = Literal["SCHEDULED", "DONE"]
 
 
@@ -14,6 +16,7 @@ class Account:
     broker: BrokerName
     username: str
     password: str
+    last_login: datetime.datetime
 
     cookies: aiohttp.CookieJar
     headers: Dict[str, str]

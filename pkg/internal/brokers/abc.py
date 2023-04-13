@@ -1,15 +1,21 @@
 import abc
 import datetime
-from typing import Dict, Tuple
-
 import aiohttp
+from typing import Dict, Literal, Tuple
+
+
+BrokerName = Literal["TAVANA", "FAKE"]
 
 
 class AbstractBroker(abc.ABC):
-    name: str 
+    name: BrokerName
     min_latency: float = 0
     max_latency: float = 0
     avg_latency: float = 0
+
+    @abc.abstractmethod
+    async def get_stock(self, stock_name: str) -> Dict[str, str]:
+        raise NotImplementedError
 
     @abc.abstractmethod
     async def login(

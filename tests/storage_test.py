@@ -1,4 +1,5 @@
 import unittest
+import datetime
 import uuid
 
 import aiohttp
@@ -58,6 +59,7 @@ class StorageTestCase(unittest.TestCase):
             broker='FAKE',
             username='1234',
             password='1234',
+            last_login=datetime.datetime.utcnow(),
             cookies=aiohttp.CookieJar(),
             headers={
                 'User-Agent': 'python3.10',
@@ -75,7 +77,11 @@ class StorageTestCase(unittest.TestCase):
         )
 
         self.storage.refresh_account(
-            account.username, account.cookies, account.headers)
+            username=account.username,
+            last_login=datetime.datetime.utcnow(),
+            cookies=account.cookies,
+            headers=account.headers
+        )
 
         db_cookies = self.storage.get_account_by_username(
             account.username).cookies.filter_cookies(URL('test.com'))
@@ -89,6 +95,7 @@ class StorageTestCase(unittest.TestCase):
             broker='FAKE',
             username='1234',
             password='1234',
+            last_login=datetime.datetime.utcnow(),
             cookies=aiohttp.CookieJar(),
             headers={
                 'User-Agent': 'python3.10',
@@ -103,7 +110,11 @@ class StorageTestCase(unittest.TestCase):
         })
 
         self.storage.refresh_account(
-            account.username, account.cookies, account.headers)
+            username=account.username,
+            last_login=datetime.datetime.utcnow(),
+            cookies=account.cookies,
+            headers=account.headers
+        )
 
         self.assertEqual(
             self.storage.get_account_by_username(account.username).headers,
@@ -116,6 +127,7 @@ class StorageTestCase(unittest.TestCase):
             broker='FAKE',
             username='1234',
             password='1234',
+            last_login=datetime.datetime.utcnow(),
             cookies=aiohttp.CookieJar(),
             headers={
                 'User-Agent': 'python3.10',
@@ -130,6 +142,7 @@ class StorageTestCase(unittest.TestCase):
         assert account.username == db_account.username
         assert account.password == db_account.password
         assert account.headers == db_account.headers
+        assert isinstance(account.last_login, datetime.datetime) == True
         # Check actual value not pointer address
         assert account.cookies._cookies == db_account.cookies._cookies
 
@@ -139,6 +152,7 @@ class StorageTestCase(unittest.TestCase):
             broker='FAKE',
             username='1234',
             password='1234',
+            last_login=datetime.datetime.utcnow(),
             cookies=aiohttp.CookieJar(),
             headers={},
         )
@@ -150,6 +164,7 @@ class StorageTestCase(unittest.TestCase):
             broker='TAVANA',
             username='1234',
             password='1111',
+            last_login=datetime.datetime.utcnow(),
             cookies=aiohttp.CookieJar(),
             headers={},
         )

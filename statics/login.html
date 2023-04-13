@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Login page</title>
+        <script src="js/login.js"></script>
+    </head>
+    <body>
+        <div>
+            <label for="username-input">Username</label>
+            <input id="username-input" type="text">
+
+            <label for="password-input">Password</label>
+            <input id="password-input" type="password">
+
+            <select id="broker-name">
+                <option value="TAVANA">tavana</option>
+                <option value="FAKE">fake<option>
+            </select>
+            <button onclick="login_user(event)">Login</button>
+
+            <p id="message"></p>
+        </div>
+    </body>
+</html>

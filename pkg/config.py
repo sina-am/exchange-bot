@@ -21,7 +21,7 @@ class LoggingConfig(pydantic.BaseSettings):
 
 
 class CaptchaConfig(pydantic.BaseSettings):
-    model: str = './data/cfl.model'
+    model: str = './data/captcha-clf'
     training_dir: str = './data/captcha/training'
 
 

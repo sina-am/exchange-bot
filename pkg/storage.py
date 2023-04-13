@@ -1,8 +1,9 @@
 import abc
+import datetime
 import json
 import pickle
 import uuid
-from typing import Dict
+from typing import Dict, Iterable, List
 
 import aiohttp
 import sqlalchemy
@@ -33,7 +34,11 @@ class AbstractStorage(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def refresh_account(self, username: str, cookies: aiohttp.CookieJar, headers: Dict[str, str]):
+    def get_accounts(self) -> Iterable[Account]:
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def refresh_account(self, username: str, last_login: datetime.datetime, cookies: aiohttp.CookieJar, headers: Dict[str, str]):
         raise NotImplementedError
 
     @abc.abstractmethod
@@ -65,6 +70,7 @@ class SqliteStorage(AbstractStorage):
             sqlalchemy.Column("username", sqlalchemy.String(100), unique=True),
             sqlalchemy.Column("password", sqlalchemy.String(100)),
             sqlalchemy.Column("broker", sqlalchemy.String(30)),
+            sqlalchemy.Column("last_login", sqlalchemy.DateTime()),
             sqlalchemy.Column("headers", sqlalchemy.JSON),
             sqlalchemy.Column("cookies", sqlalchemy.BLOB),
         )
@@ -100,6 +106,17 @@ class SqliteStorage(AbstractStorage):
         cookies._cookies = pickle.loads(data)
         return cookies
 
+    def _map_account(self, row) -> Account:
+        return Account(
+            id=uuid.UUID(bytes=row[0]),
+            broker=row[1],
+            username=row[2],
+            password=row[3],
+            last_login=datetime.datetime.fromisoformat(row[4]),
+            headers=json.loads(row[5]),
+            cookies=self.deserialize_cookies(row[6]),
+        )
+
     def get_broker_latency(self, broker_name: str) -> float:
         query = '''
             SELECT min_latency
@@ -131,7 +148,6 @@ class SqliteStorage(AbstractStorage):
                 "max_latency": max_latency,
                 "avg_latency": avg_latency,
             }])
-
 
     def add_broker(self, broker_name: str):
         query = '''
@@ -207,6 +223,16 @@ class SqliteStorage(AbstractStorage):
                 'status': new_status,
             }])
 
+    def get_accounts(self) -> Iterable[Account]:
+        query = '''
+            SELECT id, broker, username, password, last_login, headers, cookies
+            FROM accounts
+        '''
+
+        with self.engine.connect() as conn:
+            rows = conn.execute(sqlalchemy.text(query))
+            return map(self._map_account, rows)
+
     def add_account(self, account: Account):
         """ 
         Add account to database. 
@@ -215,9 +241,9 @@ class SqliteStorage(AbstractStorage):
 
         query = '''
             INSERT INTO 
-                accounts(id, broker, username, password, headers, cookies) 
+                accounts(id, broker, username, password, last_login, headers, cookies) 
             VALUES (
-                :id, :broker, :username, :password, :headers, :cookies
+                :id, :broker, :username, :password, :last_login, :headers, :cookies
             )
         '''
         with self.engine.begin() as conn:
@@ -227,6 +253,7 @@ class SqliteStorage(AbstractStorage):
                     'broker': account.broker,
                     'username': account.username,
                     'password': account.password,
+                    'last_login': datetime.datetime.utcnow(),
                     'headers': json.dumps(account.headers),
                     'cookies': self.serialize_cookies(account.cookies)
                 }]
@@ -235,10 +262,11 @@ class SqliteStorage(AbstractStorage):
             except IntegrityError as exc:
                 raise DuplicateRecordError(exc)
 
-    def refresh_account(self, username: str, cookies: aiohttp.CookieJar, headers: Dict[str, str]):
+    def refresh_account(self, username: str, last_login: datetime.datetime, cookies: aiohttp.CookieJar, headers: Dict[str, str]):
         query = '''
             UPDATE accounts
             SET
+                last_login=:last_login,
                 cookies=:cookies,
                 headers=:headers
             WHERE username=:username
@@ -246,6 +274,7 @@ class SqliteStorage(AbstractStorage):
         with self.engine.begin() as conn:
             conn.execute(sqlalchemy.text(query), [{
                 'username': username,
+                'last_login': last_login,
                 'cookies': self.serialize_cookies(cookies),
                 'headers': json.dumps(headers),
             }])
@@ -253,7 +282,7 @@ class SqliteStorage(AbstractStorage):
     def get_account_by_username(self, username: str) -> Account:
         query = '''
             SELECT 
-                id, broker, username, password, headers, cookies
+                id, broker, username, password, last_login, headers, cookies
             FROM 
                 accounts
             WHERE username=:username
@@ -264,11 +293,4 @@ class SqliteStorage(AbstractStorage):
             if not row:
                 raise RecordNotFoundError("user not found")
 
-            return Account(
-                id=uuid.UUID(bytes=row[0]),
-                broker=row[1],
-                username=row[2],
-                password=row[3],
-                headers=json.loads(row[4]),
-                cookies=self.deserialize_cookies(row[5]),
-            )
+            return self._map_account(row)

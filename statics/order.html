@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Order placement</title>
+        <script src="js/order.js"></script>
+    </head>
+    <body>
+        <div>
+            <label for="stock-search">Search Stock</label>
+            <input type="text" id="stock-search"/>
+            <button onclick="searchStock(event)">Search</button>
+            <p id="stock-search-result"></p>
+        </div>
+        <hr/>
+        <div>
+            <label for="account">Select account</label>
+            <select id="account">
+            </select>
+
+            <label for="stock-isin">ISIN</label>
+            <input type="text" id="stock-isin">
+
+            <label for="stock-count">Count</label>
+            <input type="number" id="stock-count" onchange="calcTotalPrice(event)"/>
+
+            <label for="stock-price">Price</label>
+            <input type="number" id="stock-price" onchange="calcTotalPrice(event)"/>
+
+            <label for="deadline">Time: </label>
+            <input type="datetime-local" id="deadline"/>
+
+            <label>
+                Total price: <span id="stock-total-price">0</span>
+            </label>
+
+            <button onclick="submitOrder(event)">Submit</button>
+            <label id="message"></label>
+        </div>
+    </body>
+</html>

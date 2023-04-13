@@ -2,25 +2,23 @@ import asyncio
 import datetime
 import json
 import logging
-from typing import Dict, List, Tuple, Union
+from typing import Dict, Tuple, Union
 from urllib.parse import urlencode
-import time
 
 import aiohttp
 from yarl import URL
 
 from pkg.internal.brokers.abc import AbstractBroker
 from pkg.internal.brokers.exceptions import AuthenticationError
-from pkg.internal.captcha import CaptchaML
+from pkg.internal.captcha import CaptchaSolver
 from pkg.internal.requests import Request, schedule_request, calc_latency
 
 logger = logging.getLogger('myapp')
 
 
 class TavanaBroker(AbstractBroker):
-    def __init__(self, captcha_ml: CaptchaML):
+    def __init__(self, captcha_ml: CaptchaSolver):
         self.name = "TAVANA"
-
         self.base_url = URL('https://onlinetavana.ir/')
         self.base_api_url = URL('https://api.onlinetavana.ir/Web/V1/')
         self.captcha_url = self.base_url / 'Account/undefined/4051238/Account/Captcha'
@@ -48,8 +46,20 @@ class TavanaBroker(AbstractBroker):
                     async for chunk in res.content.iter_chunked(1024):
                         fd.write(chunk)
 
-        return int(input('Enter captcha: '))
-        return int(self.captcha_detector.predict_captcha(img))
+        with open('./captcha.jpeg', 'rb') as fd:
+            return int(self.captcha_detector.predict(fd))
+
+    async def get_stock(self, stock_name: str) -> Dict[str, str]:
+        url = 'https://api.onlinetavana.ir/Web/V1/Symbol/GetSymbol?term=' + stock_name
+
+        headers = {
+            **self.base_headers,
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/95.0.4638.54 Safari/537.36 RuxitSynthetic/1.0 v8570808866573625578 t1940058695426470036 ath1fb31b7a altpriv cvcv=2 smf=0',
+        }
+
+        async with aiohttp.ClientSession(headers=headers) as session:
+            async with session.get(url) as response:
+                return await response.json()
 
     async def login(self, username: str, password: str, user_agent: str) -> Tuple[Dict[str, str], aiohttp.CookieJar]:
         url = self.base_url / 'login'
@@ -158,9 +168,8 @@ class TavanaBroker(AbstractBroker):
             headers=headers,
             data=json.dumps(order_req).encode()
         )
-        
-        # While it's 3 minutes before deadline
-        while datetime.datetime.now() + datetime.timedelta(minutes=5) < deadline:
+        # check network traffic
+        while datetime.datetime.utcnow() + datetime.timedelta(minutes=5) < deadline:
             latency = await calc_latency('get', self.base_api_url)
             self.update_latencies(latency)
             await asyncio.sleep(1)

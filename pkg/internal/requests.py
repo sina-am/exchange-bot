@@ -66,8 +66,7 @@ async def calc_latency(method: str, url: Union[URL, str]) -> float:
         return t2 - t1
 
 
-
-async def schedule_request(request: Request, deadline: datetime.datetime, latency: float) -> Tuple[int, Any]:
+async def schedule_request(request: Request, deadline: datetime.datetime, latency: float = 0) -> Tuple[int, Any]:
     """ Schedule request for the deadline 
     latency: send request at deadline - latency time
     """
@@ -82,7 +81,7 @@ async def schedule_request(request: Request, deadline: datetime.datetime, latenc
         logger.info(f"request will send at {time_to_send}")
         await _go_to_shallow_sleep(time_to_send)
 
-        logger.info(f"request sended at {datetime.datetime.now()}")
+        logger.info(f"request sended at {datetime.datetime.utcnow()}")
         t1 = time.time_ns()
         async with request.send(conn) as response:
             t2 = time.time_ns()
@@ -94,17 +93,16 @@ async def schedule_request(request: Request, deadline: datetime.datetime, latenc
 async def _go_to_deep_sleep(deadline: datetime.datetime):
     """ Will awake 5 second before deadline """
     sleep_time = (
-        deadline - datetime.timedelta(seconds=5)) - datetime.datetime.now()
+        deadline - datetime.timedelta(seconds=5)) - datetime.datetime.utcnow()
     await asyncio.sleep(sleep_time.total_seconds())
 
 
 async def _go_to_shallow_sleep(deadline: datetime.datetime):
     """ Will awake at deadline """
-    sleep_time = (deadline - datetime.datetime.now()).total_seconds()
+    sleep_time = (deadline - datetime.datetime.utcnow()).total_seconds()
     if sleep_time > 1:
         await asyncio.sleep(sleep_time - 1)
 
     counter = 0
-    while datetime.datetime.now() < deadline:
+    while datetime.datetime.utcnow() < deadline:
         counter += 1
-
