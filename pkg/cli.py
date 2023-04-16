@@ -2,14 +2,12 @@ import os
 import asyncio
 import logging
 from aiohttp import web
-from typing import Optional, get_args
-
+from typing import Optional
 import typer
 
 from pkg.config import get_config
 from pkg.internal.brokers import TavanaBroker
 from pkg.internal.captcha import CaptchaSolver
-from pkg.models import BrokerName
 from pkg.server.factory import create_server
 from pkg.service import Service
 from pkg.storage import SqliteStorage
@@ -45,7 +43,7 @@ def login(broker: str, username: str, password: str):
 
     try:
         account = asyncio.run(
-            service.login("TAVANA", username, password))  # type: ignore
+            service.login(broker, username, password))  # type: ignore
         print('account id:', account.id)
     except Exception as exc:
         print(exc)
@@ -142,3 +140,11 @@ def serve():
         reuse_address=True
     )
     logging.info(f"server is shutting down")
+
+
+@cli.command("config")
+def print_config():
+    """ Print current config """
+    from pprint import pprint
+    config = get_config()
+    pprint(config.dict())

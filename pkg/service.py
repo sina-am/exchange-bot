@@ -2,7 +2,7 @@ import asyncio
 import datetime
 import logging
 import uuid
-from typing import Dict, Iterable, List
+from typing import Dict, Iterable
 
 from pkg.internal.brokers import AbstractBroker, BrokerName
 from pkg.internal.brokers.exceptions import AuthenticationError
@@ -10,7 +10,6 @@ from pkg.models import Account, Order
 from pkg.storage import AbstractStorage, RecordNotFoundError
 
 logger = logging.getLogger('myapp')
-logger.setLevel(logging.INFO)
 
 
 class Service:
@@ -120,8 +119,16 @@ class Service:
         order: Order,
         deadline: datetime.datetime
     ):
+        logger.debug("going to deep sleep...")
+        await asyncio.sleep((deadline - datetime.datetime.utcnow() - datetime.timedelta(minutes=15)).total_seconds())
+        logger.debug(f"I'm awake. it's {(deadline - datetime.datetime.utcnow()).seconds//60}minutes before deadline")
+
+        logger.debug("let's see if last_login was for more than 15 minutes ago")
         if (account.last_login + datetime.timedelta(minutes=15)) < datetime.datetime.utcnow():
+            logger.debug("yes it was. refreshing token")
             account = await self.__attempt_for_login(broker.name, account.username, account.password)
+        else:
+            logger.debug("nope. we're ready to go")
 
         status, data = await broker.schedule_order(
             cookies=account.cookies,

@@ -11,7 +11,7 @@ format_time = "%Y/%m/%d %H:%M:%S.%f"
 
 async def time_handler(request: web.Request):
     return web.json_response({
-        'timeit': datetime.datetime.strftime(datetime.datetime.now(), format_time)})
+        'timeit': datetime.datetime.strftime(datetime.datetime.utcnow(), format_time)})
 
 
 def run_test_server():
@@ -25,19 +25,23 @@ def run_test_server():
 
 
 async def test_schedule_request_delay(n: int):
-    latencies = await calc_latency('get', 'http://localhost:8080/', 100, 0.5)
-    print(min(latencies))
+    min_latency = 0
+    for i in range(5):
+        latency = await calc_latency('get', 'http://localhost:8080/')
+        if latency < min_latency or min_latency == 0:
+            min_latency = latency
 
-    min_latency = min(latencies)
     avg = 0
     for i in range(n):
-        deadline = datetime.datetime.now() + datetime.timedelta(seconds=2)
+        deadline = datetime.datetime.utcnow() + datetime.timedelta(seconds=2)
         request = Request(method='get', url='http://localhost:8080')
-        status, data = await schedule_request(request, deadline, min_latency * 0.25)
+        async with schedule_request(request, deadline, min_latency) as response:
+            status, data = response.status, await response.json()
 
         actual_time = datetime.datetime.strptime(
             data['timeit'], format_time)  # type: ignore
 
+        logging.info(f"request actually got to server at {actual_time}")
         timeit = actual_time - deadline
         assert timeit.total_seconds() > 0, "Before deadline"
         avg += timeit.total_seconds()
@@ -46,11 +50,11 @@ async def test_schedule_request_delay(n: int):
 
 
 def main():
-    logging.basicConfig(format="%(message)s", level=logging.DEBUG)
+    logging.basicConfig(format="%(message)s", level=logging.WARNING)
     test_server = multiprocessing.Process(target=run_test_server, daemon=True)
     try:
         test_server.start()
-        asyncio.run(test_schedule_request_delay(100))
+        asyncio.run(test_schedule_request_delay(20))
         test_server.terminate()
     except KeyboardInterrupt:
         test_server.terminate()

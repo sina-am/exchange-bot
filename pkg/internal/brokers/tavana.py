@@ -2,6 +2,7 @@ import asyncio
 import datetime
 import json
 import logging
+import io
 from typing import Dict, Tuple, Union
 from urllib.parse import urlencode
 
@@ -40,14 +41,16 @@ class TavanaBroker(AbstractBroker):
     async def __get_captcha(self, cookies: aiohttp.CookieJar, headers: Dict[str, str]) -> int:
         url = self.base_url / 'Account/undefined/4051238/Account/Captcha'
 
+        # TODO: fix Reader incompatibility with BytesIO
+        captcha_img = io.BytesIO()
+
         async with aiohttp.ClientSession(cookie_jar=cookies, headers=headers) as session:
             async with session.get(url) as res:
-                with open('./captcha.jpeg', 'wb') as fd:
-                    async for chunk in res.content.iter_chunked(1024):
-                        fd.write(chunk)
+                async for chunk in res.content.iter_chunked(1024):
+                    captcha_img.write(chunk)
 
-        with open('./captcha.jpeg', 'rb') as fd:
-            return int(self.captcha_detector.predict(fd))
+        captcha_img.seek(0, 0)
+        return int(self.captcha_detector.predict(captcha_img))  # type: ignore
 
     async def get_stock(self, stock_name: str) -> Dict[str, str]:
         url = 'https://api.onlinetavana.ir/Web/V1/Symbol/GetSymbol?term=' + stock_name
@@ -118,14 +121,6 @@ class TavanaBroker(AbstractBroker):
     def convert_to_int(self, str_number: str):
         return int(str_number.replace(',', ''))
 
-    def update_latencies(self, new_latency: float):
-        if new_latency > self.max_latency:
-            self.max_latency = new_latency
-        elif new_latency < self.min_latency:
-            self.min_latency = new_latency
-
-        self.avg_latency = (self.avg_latency + new_latency) / 2
-
     async def schedule_order(
         self,
         cookies: aiohttp.CookieJar,
@@ -168,10 +163,14 @@ class TavanaBroker(AbstractBroker):
             headers=headers,
             data=json.dumps(order_req).encode()
         )
-        # check network traffic
-        while datetime.datetime.utcnow() + datetime.timedelta(minutes=5) < deadline:
+        # check network traffic from time to 1 minute before deadline
+        logger.debug("checking latency...")
+        while datetime.datetime.utcnow() + datetime.timedelta(minutes=3) < deadline:
             latency = await calc_latency('get', self.base_api_url)
+            logger.debug(f"got latency: {latency}")
             self.update_latencies(latency)
-            await asyncio.sleep(1)
+            await asyncio.sleep(30)
 
-        return await schedule_request(request, deadline, self.min_latency)
+        logger.debug(f"sending request with latency of {self.min_latency}")
+        async with schedule_request(request, deadline, self.min_latency) as response:
+            return response.status, await response.text()

@@ -13,6 +13,14 @@ class AbstractBroker(abc.ABC):
     max_latency: float = 0
     avg_latency: float = 0
 
+    def update_latencies(self, new_latency: float):
+        if new_latency > self.max_latency:
+            self.max_latency = new_latency
+        if new_latency < self.min_latency or self.min_latency == 0:
+            self.min_latency = new_latency
+
+        self.avg_latency = (self.avg_latency + new_latency) / 2
+
     @abc.abstractmethod
     async def get_stock(self, stock_name: str) -> Dict[str, str]:
         raise NotImplementedError

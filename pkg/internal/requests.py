@@ -18,6 +18,10 @@ class AbstractRequest(abc.ABC):
     async def make_connection(self):
         raise NotImplementedError
 
+    @abc.abstractmethod
+    async def send(self, conn: Connection):
+        raise NotImplementedError
+
 
 class Request(AbstractRequest):
     def __init__(
@@ -63,12 +67,14 @@ async def calc_latency(method: str, url: Union[URL, str]) -> float:
         t1 = time.time()
         async with request.send(conn) as _:
             t2 = time.time()
-        return t2 - t1
+        return (t2 - t1) * .5  # Because it's actually a the latency of send plus recv time
 
 
-async def schedule_request(request: Request, deadline: datetime.datetime, latency: float = 0) -> Tuple[int, Any]:
+@asynccontextmanager
+async def schedule_request(request: Request, deadline: datetime.datetime, latency: float = 0):
     """ Schedule request for the deadline 
-    latency: send request at deadline - latency time
+    latency: send request at deadline - latency time 
+    NODE: latency should be calculated by calc_latency function
     """
 
     logger.info(f"request scheduled for deadline: {deadline}")
@@ -82,12 +88,12 @@ async def schedule_request(request: Request, deadline: datetime.datetime, latenc
         await _go_to_shallow_sleep(time_to_send)
 
         logger.info(f"request sended at {datetime.datetime.utcnow()}")
-        t1 = time.time_ns()
+        t1 = time.time()
         async with request.send(conn) as response:
-            t2 = time.time_ns()
+            t2 = time.time()
             logger.info(
-                f"latency: {t2 - t1}ns")
-            return response.status, await response.json()
+                f"latency: {t2 - t1}s")
+            yield response
 
 
 async def _go_to_deep_sleep(deadline: datetime.datetime):
