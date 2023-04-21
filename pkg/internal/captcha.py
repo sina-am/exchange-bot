@@ -17,7 +17,7 @@ class DatasetConfig:
     shape = (60, 202, 1)
     labels = "1234567890"
     length: int = 4
-    n_sample: int = 500
+    n_sample: int = 1000
 
 
 class CaptchaSolver:
