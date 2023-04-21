@@ -157,20 +157,27 @@ class TavanaBroker(AbstractBroker):
             'shortSellIsEnabled': False,
         }
 
-        request = Request(
-            method='post',
-            url=url,
-            headers=headers,
-            data=json.dumps(order_req).encode()
-        )
-        # check network traffic from time to 1 minute before deadline
+        # check network traffic from time to 3 minute before deadline
         logger.debug("checking latency...")
         while datetime.datetime.utcnow() + datetime.timedelta(minutes=3) < deadline:
-            latency = await calc_latency('get', self.base_api_url)
+            latency = await calc_latency(
+                'get',
+                self.base_api_url,
+                cookies=cookies.filter_cookies(self.base_api_url),
+                headers=headers
+            )
             logger.debug(f"got latency: {latency}")
             self.update_latencies(latency)
             await asyncio.sleep(30)
 
+        request = Request(
+            method='post',
+            url=url,
+            headers=headers,
+            cookies=cookies.filter_cookies(url),
+            data=json.dumps(order_req).encode()
+        )
         logger.debug(f"sending request with latency of {self.min_latency}")
+        logger.debug(f"with header {headers}, cookies {cookies.filter_cookies(url)}")
         async with schedule_request(request, deadline, self.min_latency) as response:
             return response.status, await response.text()

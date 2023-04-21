@@ -8,6 +8,7 @@ import time
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from aiohttp import ClientRequest, ClientTimeout, TCPConnector
+from aiohttp.typedefs import LooseCookies
 from yarl import URL
 
 logger = logging.getLogger('myapp')
@@ -29,6 +30,7 @@ class Request(AbstractRequest):
             method: str,
             url: Union[URL, str],
             headers: Optional[Dict[str, str]] = None,
+            cookies: Optional[LooseCookies] = None,
             data: Optional[bytes] = None,
     ) -> None:
 
@@ -38,6 +40,7 @@ class Request(AbstractRequest):
             method=method,
             url=url,
             headers=headers,
+            cookies=cookies,
             data=data,
         )
 
@@ -60,9 +63,14 @@ class Request(AbstractRequest):
             yield response
 
 
-async def calc_latency(method: str, url: Union[URL, str]) -> float:
+async def calc_latency(
+        method: str,
+        url: Union[URL, str],
+        cookies: Optional[LooseCookies] = None,
+        headers: Optional[Dict[str, str]] = None
+) -> float:
     """ Calculate latency for a specific url. """
-    request = Request(method=method, url=url)
+    request = Request(method=method, url=url, headers=headers, cookies=cookies)
     async with request.make_connection() as conn:
         t1 = time.time()
         async with request.send(conn) as _:
