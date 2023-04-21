@@ -10,13 +10,27 @@ document.addEventListener("DOMContentLoaded", async function () {
     });
 });
 
+function createTdNode(value) {
+    const tdNode = document.createElement("td");
+    tdNode.innerText = value;
+    return tdNode;
+}
+
 async function searchStock(event) {
     const label = document.getElementById("stock-search").value;
     const response = await fetch("/api/stocks?label=" + label, {
         method: 'GET',
     })
 
-    document.getElementById("stock-search-result").innerHTML = JSON.stringify(await response.json())
+    const table = document.getElementById("stock-search-result");
+    const stocks = await response.json();
+    stocks.forEach((stock) => {
+        const row = document.createElement("tr");
+        row.append(createTdNode(stock.label));
+        row.append(createTdNode(stock.value));
+        row.append(createTdNode(stock.isin));
+        table.appendChild(row);
+    });
 }
 
 async function submitOrder(event) {

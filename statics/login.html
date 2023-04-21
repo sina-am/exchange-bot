@@ -3,22 +3,35 @@
     <head>
         <title>Login page</title>
         <script src="js/login.js"></script>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-KK94CHFLLe+nY2dmCWGMq91rCGa5gtU4mk92HdvYe+M/SXH301p5ILy+dN9+nJOZ" crossorigin="anonymous">
     </head>
     <body>
-        <div>
-            <label for="username-input">Username</label>
-            <input id="username-input" type="text">
+        <div class="container overflow-hidden">
+            <div class="card">
+                <div class="card-header">Add account</div>
+                <div class="card-body col-11 align-self-center">
+                    <label for="username-input" class="row form-label">Username:</label>
+                    <input id="username-input" type="text" class="row form-control">
+                
+                    <label for="password-input" class="row mt-4 form-label">Password:</label>
+                    <input id="password-input" type="password" class="row form-control">
 
-            <label for="password-input">Password</label>
-            <input id="password-input" type="password">
+                    <label for="broker-name" class="row mt-4 form-label">Broker:</label>
+                    <select id="broker-name" class="row form-select">
+                        <option value="TAVANA">tavana</option>
+                        <option value="FAKE">fake<option>
+                    </select>
 
-            <select id="broker-name">
-                <option value="TAVANA">tavana</option>
-                <option value="FAKE">fake<option>
-            </select>
-            <button onclick="login_user(event)">Login</button>
+                    <hr/>
+                    <div class="row">
+                        <button onclick="login_user(event)" class="col-3 btn btn-outline-success">
+                            Login
+                        </button>
 
-            <p id="message"></p>
+                        <p id="message" class="col"></p>
+                    </div>
+                </div>
+            </div>
         </div>
     </body>
 </html>

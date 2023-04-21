@@ -14,5 +14,5 @@ def create_server(service: Service) -> web.Application:
     app = web.Application(middlewares=[error_middleware])
     app['service'] = service
     app.add_routes(api_router)
-    app.add_routes([web.static('/static/', './statics')])
+    app.add_routes([web.static('/', './statics')])
     return app
